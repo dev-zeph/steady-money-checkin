@@ -31,9 +31,9 @@ export interface Person {
 export const RULES = [
   "Stalled: missed the last two sessions without telling the agency ahead of time, OR nothing came back for the last two weeks a diary actually went home.",
   "Weeks with no diary set, a diary on hold, and time away with notice never count against anyone.",
-  "Friday call: stalled because they stopped coming. Tuesday word: still coming every week, but behind on diaries or handing in thin pages (one or two days filled).",
+  "Reach out on Friday: stalled because they stopped coming. Tuesday word: still coming every week, but behind on diaries or handing in thin pages (one or two days filled).",
   "Contact: the counsellor's session notes win over the day-one sheet, and the list says when they differ. If only the day-one sheet says how to reach someone, the list says to check in person first: clients often answered it on day one without thinking.",
-  "Anyone who has asked not to be contacted is never on the call list. They are listed separately to see in person.",
+  "Anyone who has asked not to be contacted is never on the Friday list. They are listed separately to see in person.",
   "Shared phones are never decided for the counsellor: the list says \"shared phone, check notes\".",
 ];
 
@@ -104,8 +104,9 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
     if (maybeMine.length) needsCheck.push("A do-not-contact note might be about them (the name fits more than one client). Treated as do not contact until checked.");
     const dncNotes = [...mine.filter((x) => x.contact.doNotContact), ...maybeMine].sort(byTime);
     const lastDnc = dncNotes[dncNotes.length - 1];
-    const liftedAfter = (d: NoteFacts) => mine.some((x) => byTime(x, d) > 0 && x.contact.okAgain);
-    const dncStands = lastDnc ? !liftedAfter(lastDnc) : c.sheetContact === "do not contact" && !mine.some((x) => x.contact.okAgain);
+    const lifts = (x: NoteFacts) => !x.contact.doNotContact && x.match === "sure" && (x.contact.okAgain || x.contact.textsOk || x.contact.callsOk);
+    const liftedAfter = (d: NoteFacts) => mine.some((x) => byTime(x, d) > 0 && lifts(x));
+    const dncStands = lastDnc ? !liftedAfter(lastDnc) : c.sheetContact === "do not contact" && !mine.some(lifts);
     if (dncStands) {
       reach = "do not contact";
       reachText = "Do not contact (no calls, texts or mail)";
@@ -115,8 +116,9 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
       reachSource = `Note ${latest.date ?? ""}: "${latest.evidence || latest.raw}"`;
       if (k.doNotContact) { reach = "do not contact"; reachText = "Do not contact (no calls, texts or mail)"; }
       else if (k.paperOnly) { reach = "paper"; reachText = "Letter / paper only"; }
-      else if (k.noTexts || k.sharedPhone) { reach = "call"; reachText = "Call, no texts"; }
+      else if (k.noTexts) { reach = "call"; reachText = "Call, no texts"; }
       else if (k.textsOk) { reach = "text"; reachText = "Text is fine"; }
+      else if (k.sharedPhone) { reach = "call"; reachText = "Call, no texts"; }
       else if (k.callsOk) { reach = "call"; reachText = "Call, not text"; }
       else { reach = c.sheetContact; reachText = `Sheet says ${c.sheetContactRaw || "nothing"}`; }
       if (k.sharedPhone) caution = "Shared phone, check notes";
@@ -136,7 +138,9 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
       if (timed) reachTips.push(`When: ${cap(timed.contact.timeNote!.replace(/[.\s]+$/, ""))} (note ${timed.date ?? ""}). Stick to that time.`);
       if (shared) {
         if (!caution) caution = "Shared phone, check notes";
-        reachTips.push(`Shared phone at home (note ${shared.date ?? ""}). Never text. Someone else may answer, so ask for them by first name and keep it general until you know it's them.`);
+        reachTips.push(reach === "text"
+          ? `Someone else may see their phone (note ${shared.date ?? ""}). Keep any text short and general, with nothing about money.`
+          : `Shared phone at home (note ${shared.date ?? ""}). Never text. Someone else may answer, so ask for them by first name and keep it general until you know it's them.`);
         if (!timed) reachTips.push("No safe time is noted. Ask in person at the next session when a good time to call is.");
       }
     }
@@ -244,7 +248,7 @@ export function resultsRows(people: Person[]): string[][] {
 export interface Explanation { verdict: string; steps: { label: string; text: string }[] }
 
 const listName: Record<Action, string> = {
-  friday: "on the Friday call list",
+  friday: "on the Reach out on Friday list",
   tuesday: "on the Tuesday list (a word in person, no call)",
   "do not contact": "in the do-not-contact section (see in person only)",
   none: "not on any list this week",

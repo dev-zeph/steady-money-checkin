@@ -95,7 +95,7 @@ export default function Home() {
   function fridayCsv() {
     download(`friday-list-${slug}.csv`, toCsv([
       ["section", "client_id", "name", "counsellor", "why", "how_to_reach", "contact_check", "wrong_why"],
-      ...friday.map((p) => ["Call on Friday", p.id, p.name, p.counsellor, p.why, p.reachText, p.contactCheck, ""]),
+      ...friday.map((p) => ["Reach out on Friday", p.id, p.name, p.counsellor, p.why, p.reachText, p.contactCheck, ""]),
       ...tuesday.map((p) => ["Word on Tuesday", p.id, p.name, p.counsellor, p.why, "", "", ""]),
       ...dnc.map((p) => ["Do not contact: see in person", p.id, p.name, p.counsellor, p.why, "Do not call, text or write", "", ""]),
     ]));
@@ -130,7 +130,7 @@ export default function Home() {
           <section className="hero">
             <span className="label green">This week&apos;s records</span>
             <h1 style={{ marginTop: 10 }}>Who to call on Friday, and how the group is doing.</h1>
-            <p>Add the agency&apos;s attendance sheet, typed diaries and session notes. You get a printable call list and a one-page halfway view with no names on it. Nothing is saved.</p>
+            <p>Add the agency&apos;s attendance sheet, typed diaries and session notes. You get a printable Friday list and a one-page halfway view with no names on it. Nothing is saved.</p>
           </section>
 
           <div className="box">
@@ -234,7 +234,7 @@ export default function Home() {
                 </div>
               )}
 
-              <Group n={1} title="Call on Friday" hint="They stopped coming." rows={friday} cols={["name", "why", "reach", "wrong"]} empty="Nobody to call this week." open={openIds} toggle={toggle} />
+              <Group n={1} title="Reach out on Friday" hint="They stopped coming. Use the way and time in How to reach." rows={friday} cols={["name", "why", "reach", "wrong"]} empty="Nobody to reach out to this week." open={openIds} toggle={toggle} />
               <Group n={2} title="A word on Tuesday" hint="Still coming, so no call. Start with what the diary is for." rows={tuesday} cols={["name", "why", "wrong"]} empty="Nobody this week." open={openIds} toggle={toggle} />
               <Group n={3} title="Do not contact" hint="They asked not to be contacted. See them in person if they come in." rows={dnc} cols={["name", "why"]} empty="Nobody this week." open={openIds} toggle={toggle} />
 
@@ -370,7 +370,7 @@ function Who({ p, open, toggle }: { p: Person; open: boolean; toggle: (id: strin
   return <button className="who" aria-expanded={open} onClick={() => toggle(p.id)}>{p.name}<span className="chev" aria-hidden>▶</span></button>;
 }
 
-const LIST_LABEL: Record<Person["action"], string> = { friday: "Call on Friday", tuesday: "A word on Tuesday", "do not contact": "Do not contact", none: "Not on a list" };
+const LIST_LABEL: Record<Person["action"], string> = { friday: "Reach out on Friday", tuesday: "A word on Tuesday", "do not contact": "Do not contact", none: "Not on a list" };
 
 function matches(p: Person, q: string) {
   const t = q.trim().toLowerCase();

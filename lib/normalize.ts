@@ -186,6 +186,18 @@ function firstWord(s: string) { return s.trim().split(/\s+/)[0]?.toLowerCase() ?
 // or a plain "do not contact". "No texts please" alone does not match.
 const NO_CONTACT = /\b(do not|don't|dont)\s+contact\b|\bno contact\b|\bnot to be contacted\b|\bnot to (reach out|contact|call\s*(,|or|and)\s*text)\b|\bno calls?\s*(,|\/|and|or|&)?\s*(no\s+)?(texts?|sms|mail|letters?)\b/i;
 
+// A Money Check score out of 25. Accepts "18", " 18 ", "18/25", "18 / 25".
+// Anything else (blank, n/a, a typo like 180) is treated as missing, never guessed.
+function score(v: string, who: string, warnings: string[]): number | null {
+  const t = (v ?? "").trim();
+  if (!t) return null;
+  const m = t.match(/^(\d{1,2})(?:\s*\/\s*25)?$/);
+  const n = m ? Number(m[1]) : NaN;
+  if (n >= 5 && n <= 25) return n;
+  warnings.push(`${who}'s Money Check score "${t}" isn't a number from 5 to 25, so it is treated as missing. Check the sheet.`);
+  return null;
+}
+
 // If the AI didn't map a contact value, read the plain words ourselves.
 function contactWord(mapped: Reach, raw: string): Reach {
   if (mapped !== "nothing noted") return mapped;
@@ -226,7 +238,7 @@ export async function normalise(files: InFile[], agencyName?: string): Promise<N
     const mc: Record<string, number | null> = {};
     for (const m of am.money_check_cols) {
       const v = pick(r, ah, m.col);
-      mc[String(m.session)] = v && !isNaN(Number(v)) ? Number(v) : null;
+      mc[String(m.session)] = score(v, pick(r, ah, am.name_col), warnings);
     }
     return {
       id: pick(r, ah, am.client_id_col) || `row-${idx + 1}`,
