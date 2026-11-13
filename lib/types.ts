@@ -70,6 +70,16 @@ export interface Normalised {
   marks: MarkRow[] | null; // only if a counsellor's marked list was uploaded (used to compare, never to decide)
   fileRoles: { file: string; role: string }[];
   warnings: string[];
+  // Second reader: the AI reads each person's contact notes together, in date order,
+  // and says what the current instruction is. Used only to check the rules, never to decide alone.
+  secondRead?: Record<string, SecondRead>;
+}
+
+export interface SecondRead {
+  way: Reach;
+  when: string | null;
+  sharedPhone: boolean;
+  reason: string;
 }
 
 // A person's correction from the "Check these" tab. Re-running the rules applies them.

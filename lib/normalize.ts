@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { parseCsv, looksLikeCsv } from "./csv";
-import type { Attend, Client, DiaryEntry, MarkRow, NoteFacts, Normalised, Reach } from "./types";
+import type { Attend, Client, DiaryEntry, MarkRow, NoteFacts, Normalised, Reach, SecondRead } from "./types";
 
 // Claude Haiku 5.5: same results as larger models on every test, about 3 cents a run.
 export const MODEL = "claude-haiku-5-5";
@@ -133,7 +133,7 @@ For EVERY note line you are given, return exactly one entry with the same i. Nev
 - diary: the diary/homework (HW) for the coming week. "set" (diary set, HW set), "not set" (ran long, HW not set, did not set the diary, no homework went home), "on hold" (diary on hold, still on hold, agreed pause), else "not stated".
 - away_with_notice: true only if the client told the agency ahead of time they would miss sessions.
 - contact: set changed=true only if the note says something about how or whether to reach them.
-  do_not_contact: asked for no calls, texts or mail at all. shared_phone: phone is shared at home. no_texts: asked not to be texted. texts_ok: says text is fine. calls_ok: says calls / being phoned is fine or wanted. paper_only: letter or paper only, or phone cut off / out of service. ok_to_contact_again: true only if the note clearly says a client who had asked not to be contacted now agrees to be contacted again. time_note: any words about WHEN to reach them, such as "calling in the evening is fine", "daytime only, on their break", "mornings", "not before 5", "weekends". Copy the note's own words briefly. Null if the note says nothing about timing.
+  do_not_contact: asked for no calls, texts or mail at all. shared_phone: phone is shared at home. no_texts: asked not to be texted. texts_ok: says text is fine. calls_ok: says calls / being phoned is fine or wanted. paper_only: letter or paper only, or phone cut off / out of service. ok_to_contact_again: true if the note says the client is now okay to be contacted, or ready to hear from us again (for example "texting her is okay, she's ready to hear from us" or "calls are fine again"), even if the earlier request is not in this note. time_note: any words about WHEN to reach them, such as "calling in the evening is fine", "daytime only, on their break", "mornings", "not before 5", "weekends". Copy the note's own words briefly. Null if the note says nothing about timing.
 - evidence: copy the exact words from the note that support the attended, diary, away and contact facts. Copy them character for character. Empty string if nothing applies.`;
 }
 
@@ -338,6 +338,11 @@ export async function normalise(files: InFile[], agencyName?: string): Promise<N
   }
   for (const x of notes) if (x.contact.doNotContact && x.match !== "sure" && !x.alsoCould?.length) warnings.push(`A note asking for no contact is not firmly linked to a client: "${x.raw.slice(0, 80)}". Check it before anyone is contacted.`);
 
+  // Second reader: reread each person's contact notes together, in date order.
+  let secondRead: Record<string, SecondRead> | undefined;
+  try { secondRead = await readContactHistory(clients, notes); }
+  catch { warnings.push("The second reader for contact notes could not run, so contact comes from the rules alone. Check contact details by hand this week."); }
+
   // Diaries -> entries, with names matched by the AI.
   const diaries: DiaryEntry[] = [];
   const dFile = byRole("diaries");
@@ -408,5 +413,45 @@ export async function normalise(files: InFile[], agencyName?: string): Promise<N
     clients, diaries, notes, marks,
     fileRoles: map.files.map((f) => ({ file: f.file_name, role: f.role })),
     warnings,
+    secondRead,
   };
+}
+
+const SECOND_SYSTEM = `You are the second reader of a money-coaching agency's session notes. A first reader has already gone through each note line by line. Your job is to read ALL of one client's notes together, oldest first, and say what the CURRENT instruction is for reaching them.
+Read for meaning, not keywords. Be careful with messy wording:
+- The newest instruction wins over older ones and over the day-one sheet, unless the newer note is about something else.
+- "No contact with the old landline" or "do not contact at the work number" is about a phone number, not the person. "Please don't call the house, text only" means text. "Do not discuss things with her mother" is not a request to stop contact. A client texting the counsellor is not an instruction.
+- If a client asked for no contact and a later note says they are fine to hear from us again, or names a way to reach them, the request is lifted.
+- A shared phone means someone else may answer or see messages.
+- Self-corrections count as the final version ("after 4? No, before 3" means before 3).
+way: "do not contact", "paper" (letter only, or phone cut off), "call", "text", or "nothing noted" if nothing says how to reach them and the sheet is blank.
+when: any timing in the current instruction, in a few words (for example "daytime, on lunch break", "before 3", "evenings"), else null.
+"do not contact" only when the client (or a note on their behalf) asked not to be contacted. A shared phone, no texts, or no safe time given is NOT a reason for do not contact: say call, set shared_phone, and mention the care needed in reason. Only if a note is genuinely unclear about whether the client asked for no contact, pick do not contact and say why. reason: one short plain sentence.`;
+
+const SecondSchema = z.object({ people: z.array(z.object({
+  client_id: z.string(),
+  way: z.enum(["do not contact", "paper", "call", "text", "nothing noted"]),
+  when: z.string().nullable(),
+  shared_phone: z.boolean(),
+  reason: z.string(),
+})) });
+
+// Only people whose contact is in question: a contact note, a no-contact word, or a no-contact sheet.
+async function readContactHistory(clients: Client[], notes: NoteFacts[]): Promise<Record<string, SecondRead>> {
+  const who = clients.filter((c) => c.sheetContact === "do not contact"
+    || notes.some((x) => x.clientId === c.id && (x.contact.changed || NO_CONTACT.test(x.raw))));
+  const out: Record<string, SecondRead> = {};
+  for (let i = 0; i < who.length; i += 30) {
+    const chunk = who.slice(i, i + 30);
+    const text = chunk.map((c) => {
+      const mine = notes.filter((x) => x.clientId === c.id).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.index - b.index);
+      return `CLIENT ${c.id}
+Day-one sheet says: ${c.sheetContactRaw || "(blank)"}
+Notes, oldest first:
+${mine.map((x) => `- [${x.date ?? "no date"}] ${x.raw}`).join("\n")}`;
+    }).join("\n\n");
+    const res = await ask(SECOND_SYSTEM, text, SecondSchema);
+    for (const p of res.people) if (chunk.some((c) => c.id === p.client_id)) out[p.client_id] = { way: p.way, when: p.when, sharedPhone: p.shared_phone, reason: p.reason };
+  }
+  return out;
 }

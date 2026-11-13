@@ -15,6 +15,7 @@ export interface Person {
   reachText: string; // what Maya reads
   caution: string | null;
   reachTips: string[]; // timing and safety details from the notes, in plain words
+  secondOpinion: string | null; // what the second reader said, when it was asked
   reachSource: string; // where the contact rule came from
   contactCheck: string; // plain note for the counsellor on how far to trust the contact way
   missedLastTwo: boolean;
@@ -145,6 +146,27 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
       }
     }
 
+    // Second reader: if it reads the notes differently, take the safer answer and ask a person.
+    let secondOpinion: string | null = null;
+    const r2 = n.secondRead?.[c.id];
+    if (r2) {
+      const same = (a: Reach) => (a === "nothing noted" ? "call" : a);
+      const when2 = r2.when ? `, ${r2.when}` : "";
+      if (same(r2.way) === same(reach)) secondOpinion = `Agrees: ${r2.way}${when2}. ${r2.reason}`;
+      else if (r2.way === "do not contact") {
+        secondOpinion = `Read the notes as do not contact: ${r2.reason}`;
+        needsCheck.push(`The second reader read the notes as do not contact (${r2.reason}). The rules said "${reach}". Held as do not contact until you check.`);
+        reach = "do not contact"; reachText = "Do not contact (held until checked)"; reachTips.length = 0;
+      } else {
+        secondOpinion = `Disagrees: reads it as ${r2.way}${when2}. ${r2.reason}`;
+        needsCheck.push(`The second reader read the notes as "${r2.way}${when2}" (${r2.reason}). The rules said "${reach}". Check the notes before reaching out.`);
+      }
+      if (reach !== "do not contact") {
+        if (r2.when && !reachTips.some((t) => t.startsWith("When:"))) reachTips.push(`Possible timing from the second reader: ${r2.when}. Check the note before relying on it.`);
+        if (r2.sharedPhone && !reachTips.some((t) => /shared phone|may see their phone/i.test(t))) reachTips.push("The second reader thinks someone else may answer or see this phone. Check the note, and keep it general.");
+      }
+    }
+
     // Be open about where the contact way came from. Maya's notes beat the day-one sheet,
     // but the sheet is often out of date and the notes only know what clients said.
     const fromSheet = reachSource.startsWith("Day-one");
@@ -170,7 +192,7 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
 
     return {
       id: c.id, name: c.name, counsellor: c.counsellor, status, action, why,
-      reach, reachText, caution, reachTips, reachSource, contactCheck, missedLastTwo, awayWithNotice,
+      reach, reachText, caution, reachTips, secondOpinion, reachSource, contactCheck, missedLastTwo, awayWithNotice,
       diaryWeeksCounted: counted, thinWeeks, scoreFirst, scoreLatest: later, needsCheck,
       lastTwoSessions: lastTwo.map((i) => i + 1), lastTwoAttendance: lastTwo.map((i) => c.sessions[i]),
     };
@@ -279,6 +301,7 @@ export function explain(p: Person): Explanation {
 
   // 3. Contact
   steps.push({ label: "How to reach", text: `${p.reachText}. ${p.contactCheck}` });
+  if (p.secondOpinion) steps.push({ label: "Second reader", text: p.secondOpinion });
   for (const t of p.reachTips) steps.push(t.startsWith("When: ") ? { label: "When to reach", text: t.slice(6) } : { label: "Be careful", text: t });
 
   const verdict = `${p.status === "stalled" ? "Stalled" : "On track"}, so they are ${listName[p.action]}.`;
