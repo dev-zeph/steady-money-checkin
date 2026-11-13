@@ -280,7 +280,7 @@ export default function Home() {
               </div>
               {flagged.length > 0 && (
                 <div className="group">
-                  <div className="group-head"><h3>People whose row rests on a guess</h3></div>
+                  <div className="group-head"><h3>People to check before reaching out</h3></div>
                   <table><tbody>{flagged.map((p) => <tr key={p.id}><td style={{ width: "28%" }}><b>{p.name}</b><span className="sub">{p.counsellor}</span></td><td>{p.needsCheck.join(" ")}</td></tr>)}</tbody></table>
                 </div>
               )}

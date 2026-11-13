@@ -50,6 +50,7 @@ function applyOverrides(n: Normalised, o: Overrides) {
 
 const byTime = (a: NoteFacts, b: NoteFacts) => (a.date ?? "").localeCompare(b.date ?? "") || a.index - b.index;
 
+const lower = (t: string) => { const s = t.trim().replace(/([^.!?])$/, "$1."); return s.charAt(0).toLowerCase() + s.slice(1); };
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClient: {} }): Person[] {
@@ -152,18 +153,18 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
     if (r2) {
       const same = (a: Reach) => (a === "nothing noted" ? "call" : a);
       const when2 = r2.when ? `, ${r2.when}` : "";
-      if (same(r2.way) === same(reach)) secondOpinion = `Agrees: ${r2.way}${when2}. ${r2.reason}`;
+      if (same(r2.way) === same(reach)) secondOpinion = null;
       else if (r2.way === "do not contact") {
-        secondOpinion = `Read the notes as do not contact: ${r2.reason}`;
-        needsCheck.push(`The second reader read the notes as do not contact (${r2.reason}). The rules said "${reach}". Held as do not contact until you check.`);
+        secondOpinion = `Unsure. Reading all their notes together, I think they may have asked not to be contacted: ${lower(r2.reason)} So they are held as do not contact until you check.`;
+        needsCheck.push(`Unsure about contact. Reading all their notes together, I think they may have asked not to be contacted: ${lower(r2.reason)} Held as do not contact until you check the notes.`);
         reach = "do not contact"; reachText = "Do not contact (held until checked)"; reachTips.length = 0;
       } else {
-        secondOpinion = `Disagrees: reads it as ${r2.way}${when2}. ${r2.reason}`;
-        needsCheck.push(`The second reader read the notes as "${r2.way}${when2}" (${r2.reason}). The rules said "${reach}". Check the notes before reaching out.`);
+        secondOpinion = `Unsure. Reading all their notes together, I think the way to reach them may be ${r2.way}${when2}: ${lower(r2.reason)} The list says ${reach}. Check the notes before reaching out.`;
+        needsCheck.push(`Unsure about contact. The list says ${reach}, but reading all their notes together, I think it may be ${r2.way}${when2}: ${lower(r2.reason)} Check the notes before reaching out.`);
       }
       if (reach !== "do not contact") {
-        if (r2.when && !reachTips.some((t) => t.startsWith("When:"))) reachTips.push(`Possible timing from the second reader: ${r2.when}. Check the note before relying on it.`);
-        if (r2.sharedPhone && !reachTips.some((t) => /shared phone|may see their phone/i.test(t))) reachTips.push("The second reader thinks someone else may answer or see this phone. Check the note, and keep it general.");
+        if (r2.when && !reachTips.some((t) => t.startsWith("When:"))) reachTips.push(`I think the best time may be ${r2.when}. Check the note before relying on it.`);
+        if (r2.sharedPhone && !reachTips.some((t) => /shared phone|may see their phone/i.test(t))) reachTips.push("I think someone else may answer or see this phone. Check the note, and keep it general.");
       }
     }
 
@@ -301,7 +302,7 @@ export function explain(p: Person): Explanation {
 
   // 3. Contact
   steps.push({ label: "How to reach", text: `${p.reachText}. ${p.contactCheck}` });
-  if (p.secondOpinion) steps.push({ label: "Second reader", text: p.secondOpinion });
+  if (p.secondOpinion) steps.push({ label: "Unsure", text: p.secondOpinion });
   for (const t of p.reachTips) steps.push(t.startsWith("When: ") ? { label: "When to reach", text: t.slice(6) } : { label: "Be careful", text: t });
 
   const verdict = `${p.status === "stalled" ? "Stalled" : "On track"}, so they are ${listName[p.action]}.`;

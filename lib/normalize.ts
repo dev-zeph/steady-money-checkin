@@ -341,7 +341,7 @@ export async function normalise(files: InFile[], agencyName?: string): Promise<N
   // Second reader: reread each person's contact notes together, in date order.
   let secondRead: Record<string, SecondRead> | undefined;
   try { secondRead = await readContactHistory(clients, notes); }
-  catch { warnings.push("The second reader for contact notes could not run, so contact comes from the rules alone. Check contact details by hand this week."); }
+  catch { warnings.push("The contact notes could only be read one line at a time this week, so messy wording may have been missed. Check contact details by hand before reaching out."); }
 
   // Diaries -> entries, with names matched by the AI.
   const diaries: DiaryEntry[] = [];
