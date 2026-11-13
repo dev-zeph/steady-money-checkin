@@ -26,6 +26,7 @@ export default function Home() {
   const [over, setOver] = useState<Overrides>({ noteClient: {}, diaryClient: {} });
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState(false);
+  const [q, setQ] = useState("");
   const picker = useRef<HTMLInputElement>(null);
 
   const people = useMemo(() => (data ? decide(data, over) : []), [data, over]);
@@ -67,7 +68,7 @@ export default function Home() {
       const res = await fetch("/api/normalize", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ files: payload }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      setData(json); setOver({ noteClient: {}, diaryClient: {} }); setOpenIds(new Set()); setTab("friday");
+      setData(json); setOver({ noteClient: {}, diaryClient: {} }); setOpenIds(new Set()); setQ(""); setTab("friday");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally { setBusy(false); }
@@ -75,6 +76,8 @@ export default function Home() {
   function startOver() { setData(null); setFiles([]); setError(null); }
   const toggle = (id: string) => setOpenIds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
+  const found = q.trim() ? people.filter((p) => matches(p, q)) : [];
+  const visible = q.trim() ? found : people;
   const friday = people.filter((p) => p.action === "friday");
   const tuesday = people.filter((p) => p.action === "tuesday");
   const dnc = people.filter((p) => p.action === "do not contact");
@@ -208,6 +211,29 @@ export default function Home() {
               </div>
               {checkCount > 0 && <p className="notice noprint">{checkCount} thing{checkCount === 1 ? "" : "s"} the tool wasn&apos;t sure about. Look at <button className="who" onClick={() => setTab("check")} style={{ textDecoration: "underline", fontWeight: 600, color: "inherit" }}>Check these</button> before calling.</p>}
 
+              <Search value={q} onChange={setQ} placeholder="Search anyone at this agency by name, ID or counsellor" />
+              {q.trim() && (
+                <div className="group noprint">
+                  <div className="group-head"><span className="label green">Search</span><h3>Results <span className="num muted">({found.length})</span></h3><span className="hint">Full details are open below each name.</span></div>
+                  {!found.length ? <p className="empty">Nobody matches &quot;{q}&quot;.</p> : (
+                    <table>
+                      <thead><tr><th>Name</th><th>On which list</th><th>Why</th><th>How to reach</th></tr></thead>
+                      <tbody>{found.map((p) => (
+                        <Fragment key={p.id}>
+                          <tr>
+                            <td style={{ width: "22%" }}><b>{p.name}</b><span className="sub">{p.id} · {p.counsellor}</span></td>
+                            <td><span className={`tag ${p.status === "stalled" ? "stalled" : "ok"}`}>{LIST_LABEL[p.action]}</span></td>
+                            <td>{p.why}</td>
+                            <td><Reach p={p} /></td>
+                          </tr>
+                          <WhyRow p={p} span={4} />
+                        </Fragment>
+                      ))}</tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
               <Group n={1} title="Call on Friday" hint="They stopped coming." rows={friday} cols={["name", "why", "reach", "wrong"]} empty="Nobody to call this week." open={openIds} toggle={toggle} />
               <Group n={2} title="A word on Tuesday" hint="Still coming, so no call. Start with what the diary is for." rows={tuesday} cols={["name", "why", "wrong"]} empty="Nobody this week." open={openIds} toggle={toggle} />
               <Group n={3} title="Do not contact" hint="They asked not to be contacted. See them in person if they come in." rows={dnc} cols={["name", "why"]} empty="Nobody this week." open={openIds} toggle={toggle} />
@@ -316,15 +342,17 @@ export default function Home() {
                 </div>
                 <div className="actions noprint"><button className="btn" onClick={everyoneCsv}>Download spreadsheet</button><button className="btn" onClick={() => window.print()}>Print</button></div>
               </div>
+              <Search value={q} onChange={setQ} placeholder="Search by name, ID or counsellor" />
+              {q.trim() && <p className="small noprint" style={{ margin: "0 0 12px" }}>Showing {found.length} of {people.length}.</p>}
               <table>
                 <thead><tr><th>Name</th><th>Status</th><th>Why</th><th>How to reach</th></tr></thead>
-                <tbody>{people.map((p) => (
+                <tbody>{visible.map((p) => (
                   <Fragment key={p.id}>
                     <tr>
                       <td><Who p={p} open={openIds.has(p.id)} toggle={toggle} /><span className="sub">{p.id} · {p.counsellor}</span></td>
                       <td><span className={`tag ${p.status === "stalled" ? "stalled" : "ok"}`}>{p.status}</span></td>
                       <td>{p.why}</td>
-                      <td>{p.reachText}{p.contactCheck.includes("check to be sure") && <span className="sub"><span className="tag check">Check in person</span></span>}</td>
+                      <td><Reach p={p} /></td>
                     </tr>
                     {openIds.has(p.id) && <WhyRow p={p} span={4} />}
                   </Fragment>
@@ -340,6 +368,34 @@ export default function Home() {
 
 function Who({ p, open, toggle }: { p: Person; open: boolean; toggle: (id: string) => void }) {
   return <button className="who" aria-expanded={open} onClick={() => toggle(p.id)}>{p.name}<span className="chev" aria-hidden>▶</span></button>;
+}
+
+const LIST_LABEL: Record<Person["action"], string> = { friday: "Call on Friday", tuesday: "A word on Tuesday", "do not contact": "Do not contact", none: "Not on a list" };
+
+function matches(p: Person, q: string) {
+  const t = q.trim().toLowerCase();
+  return [p.name, p.id, p.counsellor].some((x) => x.toLowerCase().includes(t));
+}
+
+function Search({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <div className="search noprint">
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label="Search clients" />
+      {value && <button className="btn" onClick={() => onChange("")}>Clear</button>}
+    </div>
+  );
+}
+
+// How to reach: the way, then timing and safety details, then how far to trust it.
+function Reach({ p }: { p: Person }) {
+  return (
+    <>
+      <b>{p.reachText}</b>
+      {p.caution && <span className="sub"><span className="tag check">{p.caution}</span></span>}
+      {p.reachTips.map((t) => <span key={t} className="sub tip">{t}</span>)}
+      {p.contactCheck.includes("check to be sure") ? <span className="sub"><span className="tag check">Check in person</span> Only the day-one sheet says this. Ask in person how and when to reach them.</span> : <span className="sub">{p.contactCheck}</span>}
+    </>
+  );
 }
 
 function WhyRow({ p, span }: { p: Person; span: number }) {
@@ -369,7 +425,7 @@ function Group({ n, title, hint, rows, cols, empty, open, toggle }: { n: number;
               <tr>
                 {cols.includes("name") && <td style={{ width: "24%" }}><Who p={p} open={open.has(p.id)} toggle={toggle} /><span className="sub">{p.counsellor}</span></td>}
                 {cols.includes("why") && <td>{p.why}</td>}
-                {cols.includes("reach") && <td>{p.reachText}{p.caution && <span className="sub"><span className="tag check">{p.caution}</span></span>}<span className="sub">{p.contactCheck}</span></td>}
+                {cols.includes("reach") && <td><Reach p={p} /></td>}
                 {cols.includes("wrong") && <td className="write-in"></td>}
               </tr>
               {open.has(p.id) && <WhyRow p={p} span={cols.length} />}

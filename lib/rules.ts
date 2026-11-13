@@ -14,6 +14,7 @@ export interface Person {
   reach: Reach; // for the answer key: text | call | paper | do not contact | nothing noted
   reachText: string; // what Maya reads
   caution: string | null;
+  reachTips: string[]; // timing and safety details from the notes, in plain words
   reachSource: string; // where the contact rule came from
   contactCheck: string; // plain note for the counsellor on how far to trust the contact way
   missedLastTwo: boolean;
@@ -47,6 +48,8 @@ function applyOverrides(n: Normalised, o: Overrides) {
 }
 
 const byTime = (a: NoteFacts, b: NoteFacts) => (a.date ?? "").localeCompare(b.date ?? "") || a.index - b.index;
+
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClient: {} }): Person[] {
   const { notes, diaries } = applyOverrides(n, o);
@@ -116,7 +119,6 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
       else if (k.textsOk) { reach = "text"; reachText = "Text is fine"; }
       else if (k.callsOk) { reach = "call"; reachText = "Call, not text"; }
       else { reach = c.sheetContact; reachText = `Sheet says ${c.sheetContactRaw || "nothing"}`; }
-      if (k.timeNote) reachText += ` (${k.timeNote})`;
       if (k.sharedPhone) caution = "Shared phone, check notes";
     } else {
       reach = c.sheetContact;
@@ -124,11 +126,26 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
       reachText = c.sheetContactRaw ? `${c.sheetContactRaw} (day-one sheet, nothing newer noted)` : "Nothing noted";
     }
 
+    // Timing and safety details. These matter as much as the channel: a call at the
+    // wrong time on a shared phone can do harm. Like the contact way itself, they come
+    // from the newest note about contact, so "own phone now" cancels an older "shared phone".
+    const reachTips: string[] = [];
+    if (reach !== "do not contact" && latest) {
+      const timed = latest.contact.timeNote ? latest : undefined;
+      const shared = latest.contact.sharedPhone ? latest : undefined;
+      if (timed) reachTips.push(`When: ${cap(timed.contact.timeNote!.replace(/[.\s]+$/, ""))} (note ${timed.date ?? ""}). Stick to that time.`);
+      if (shared) {
+        if (!caution) caution = "Shared phone, check notes";
+        reachTips.push(`Shared phone at home (note ${shared.date ?? ""}). Never text. Someone else may answer, so ask for them by first name and keep it general until you know it's them.`);
+        if (!timed) reachTips.push("No safe time is noted. Ask in person at the next session when a good time to call is.");
+      }
+    }
+
     // Be open about where the contact way came from. Maya's notes beat the day-one sheet,
     // but the sheet is often out of date and the notes only know what clients said.
     const fromSheet = reachSource.startsWith("Day-one");
     const contactCheck = fromSheet
-      ? `Only the day-one sheet says ${c.sheetContactRaw || "nothing"}; nothing newer in the notes. Maya should check to be sure.`
+      ? `Only the day-one sheet says ${c.sheetContactRaw || "nothing"}; nothing newer in the notes. Maya should check to be sure, and ask in person how and when is best to reach them.`
       : reach !== c.sheetContact
         ? `Notes override the day-one sheet (sheet said ${c.sheetContactRaw || "nothing"}).`
         : "Notes agree with the day-one sheet.";
@@ -149,7 +166,7 @@ export function decide(n: Normalised, o: Overrides = { noteClient: {}, diaryClie
 
     return {
       id: c.id, name: c.name, counsellor: c.counsellor, status, action, why,
-      reach, reachText, caution, reachSource, contactCheck, missedLastTwo, awayWithNotice,
+      reach, reachText, caution, reachTips, reachSource, contactCheck, missedLastTwo, awayWithNotice,
       diaryWeeksCounted: counted, thinWeeks, scoreFirst, scoreLatest: later, needsCheck,
       lastTwoSessions: lastTwo.map((i) => i + 1), lastTwoAttendance: lastTwo.map((i) => c.sessions[i]),
     };
@@ -257,7 +274,8 @@ export function explain(p: Person): Explanation {
   if (p.thinWeeks.length) steps.push({ label: "Thin pages", text: `In week ${p.thinWeeks.join(" and ")} the page came back with only 1 or 2 days filled in. Not stalled, but worth a word on Tuesday.` });
 
   // 3. Contact
-  steps.push({ label: "How to reach", text: `${p.reachText}. ${p.contactCheck}${p.caution ? ` ${p.caution}.` : ""}` });
+  steps.push({ label: "How to reach", text: `${p.reachText}. ${p.contactCheck}` });
+  for (const t of p.reachTips) steps.push(t.startsWith("When: ") ? { label: "When to reach", text: t.slice(6) } : { label: "Be careful", text: t });
 
   const verdict = `${p.status === "stalled" ? "Stalled" : "On track"}, so they are ${listName[p.action]}.`;
   return { verdict, steps };

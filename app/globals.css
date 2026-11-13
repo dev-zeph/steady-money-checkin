@@ -218,3 +218,9 @@ select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid va
   .stat .big { font-size: 30px; }
   .bar .fill, .bar .fill.up { background: #333 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Search */
+.search { display: flex; gap: 8px; margin: 0 0 20px; }
+.search input { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--edge); background: var(--bg); color: var(--ink); border-radius: 0; }
+.search input:focus { outline: 2px solid var(--green); outline-offset: -1px; }
+.sub.tip { color: var(--ink); border-left: 2px solid var(--amber, #b7791f); padding-left: 8px; margin-top: 6px; }

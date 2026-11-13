@@ -133,7 +133,7 @@ For EVERY note line you are given, return exactly one entry with the same i. Nev
 - diary: the diary/homework (HW) for the coming week. "set" (diary set, HW set), "not set" (ran long, HW not set, did not set the diary, no homework went home), "on hold" (diary on hold, still on hold, agreed pause), else "not stated".
 - away_with_notice: true only if the client told the agency ahead of time they would miss sessions.
 - contact: set changed=true only if the note says something about how or whether to reach them.
-  do_not_contact: asked for no calls, texts or mail at all. shared_phone: phone is shared at home. no_texts: asked not to be texted. texts_ok: says text is fine. calls_ok: says calls / being phoned is fine or wanted. paper_only: letter or paper only, or phone cut off / out of service. ok_to_contact_again: true only if the note clearly says a client who had asked not to be contacted now agrees to be contacted again. time_note: any time limits such as "evenings", else null.
+  do_not_contact: asked for no calls, texts or mail at all. shared_phone: phone is shared at home. no_texts: asked not to be texted. texts_ok: says text is fine. calls_ok: says calls / being phoned is fine or wanted. paper_only: letter or paper only, or phone cut off / out of service. ok_to_contact_again: true only if the note clearly says a client who had asked not to be contacted now agrees to be contacted again. time_note: any words about WHEN to reach them, such as "calling in the evening is fine", "daytime only, on their break", "mornings", "not before 5", "weekends". Copy the note's own words briefly. Null if the note says nothing about timing.
 - evidence: copy the exact words from the note that support the attended, diary, away and contact facts. Copy them character for character. Empty string if nothing applies.`;
 }
 
@@ -181,6 +181,10 @@ export function dateReader(samples: string[]): (s: string | null) => string | nu
 }
 
 function firstWord(s: string) { return s.trim().split(/\s+/)[0]?.toLowerCase() ?? ""; }
+
+// Words that always mean "do not contact": no calls together with no texts or mail,
+// or a plain "do not contact". "No texts please" alone does not match.
+const NO_CONTACT = /\b(do not|don't|dont)\s+contact\b|\bno contact\b|\bnot to be contacted\b|\bnot to (reach out|contact|call\s*(,|or|and)\s*text)\b|\bno calls?\s*(,|\/|and|or|&)?\s*(no\s+)?(texts?|sms|mail|letters?)\b/i;
 
 // If the AI didn't map a contact value, read the plain words ourselves.
 function contactWord(mapped: Reach, raw: string): Reach {
@@ -282,13 +286,17 @@ export async function normalise(files: InFile[], agencyName?: string): Promise<N
     }
     if (n.evidence && !raw.includes(n.evidence)) problems.push("The AI's quoted evidence isn't word for word in the note.");
     if (!clientId) problems.push("This note isn't linked to anyone.");
+    // Safety net in plain code: if the note's own words ask for no contact, it is a
+    // do-not-contact note, whatever the AI said. This can only make a result safer.
+    const askedNoContact = NO_CONTACT.test(raw) && !n.contact.ok_to_contact_again;
+    if (askedNoContact && !n.contact.do_not_contact) problems.push("The note's words ask for no contact, so it is treated as do not contact (the AI had missed this).");
     return {
       index: i, raw, date: n.date, session: n.date ? dates.indexOf(n.date) + 1 : null,
       nameAsWritten: n.name_as_written, counsellorAsWritten: n.counsellor_as_written,
       clientId, match, matchReason: n.match_reason, attended: n.attended, diary: n.diary,
       awayWithNotice: n.away_with_notice,
       contact: {
-        changed: n.contact.changed, doNotContact: n.contact.do_not_contact, sharedPhone: n.contact.shared_phone,
+        changed: n.contact.changed || askedNoContact, doNotContact: n.contact.do_not_contact || askedNoContact, sharedPhone: n.contact.shared_phone,
         noTexts: n.contact.no_texts, textsOk: n.contact.texts_ok, callsOk: n.contact.calls_ok,
         paperOnly: n.contact.paper_only, okAgain: n.contact.ok_to_contact_again, timeNote: n.contact.time_note,
       },
