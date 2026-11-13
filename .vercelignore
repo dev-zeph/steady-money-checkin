@@ -1,0 +1,5 @@
+# Keep client data, test output and secrets off the server
+out
+*.log
+scripts
+.env*
